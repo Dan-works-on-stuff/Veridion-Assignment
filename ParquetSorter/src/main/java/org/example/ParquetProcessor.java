@@ -11,9 +11,7 @@ import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 
 public class ParquetProcessor {
 
@@ -140,4 +138,90 @@ public class ParquetProcessor {
         }
         return populatedFields;
     }
+
+
+
+
+    public static List<GenericRecord> sortRecordsWithUniqueFirst(List<GenericRecord> records) {
+        Map<String, List<GenericRecord>> groups = new HashMap<>();
+
+        // Group records by normalized company name
+        for (GenericRecord record : records) {
+            String normalizedName = normalizeCompanyName(record);
+            groups.computeIfAbsent(normalizedName, k -> new ArrayList<>()).add(record);
+        }
+
+        List<GenericRecord> uniqueList = new ArrayList<>();
+        List<GenericRecord> nonUniqueNamed = new ArrayList<>();
+        List<GenericRecord> unnamedList = new ArrayList<>();
+
+        // Process each group
+        for (Map.Entry<String, List<GenericRecord>> entry : groups.entrySet()) {
+            String normalizedName = entry.getKey();
+            List<GenericRecord> group = entry.getValue();
+
+            if (normalizedName.isEmpty()) {
+                unnamedList.addAll(group);
+                continue;
+            }
+
+            // Find maximum completeness in group
+            int maxCompleteness = group.stream()
+                    .mapToInt(ParquetProcessor::calculateRecordCompleteness)
+                    .max()
+                    .orElse(0);
+
+            // Get first record with max completeness
+            GenericRecord uniqueRecord = group.stream()
+                    .filter(r -> calculateRecordCompleteness(r) == maxCompleteness)
+                    .findFirst()
+                    .orElse(null);
+
+            if (uniqueRecord != null) {
+                uniqueList.add(uniqueRecord);
+                // Add remaining group members to non-unique
+                group.stream()
+                        .filter(r -> r != uniqueRecord)
+                        .forEach(nonUniqueNamed::add);
+            }
+        }
+
+        // Sort each section
+        uniqueList.sort(Comparator.comparing(ParquetProcessor::normalizeCompanyName));
+        nonUniqueNamed.sort(getCompanySortingComparator());
+        unnamedList.sort(completenessDescComparator());
+
+        // Combine results
+        List<GenericRecord> result = new ArrayList<>();
+        result.addAll(uniqueList);
+        result.addAll(nonUniqueNamed);
+        result.addAll(unnamedList);
+
+        return result;
+    }
+
+    private static Comparator<GenericRecord> completenessDescComparator() {
+        return (r1, r2) -> Integer.compare(
+                calculateRecordCompleteness(r2),
+                calculateRecordCompleteness(r1)
+        );
+    }
+    public static int getUniqueCount(List<GenericRecord> sortedRecords) {
+        Set<String> seenNames = new HashSet<>();
+        int count = 0;
+
+        for (GenericRecord record : sortedRecords) {
+            String normalized = normalizeCompanyName(record);
+
+            // Only count first occurrence of each name
+            if (!normalized.isEmpty() && !seenNames.contains(normalized)) {
+                seenNames.add(normalized);
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+
 }
