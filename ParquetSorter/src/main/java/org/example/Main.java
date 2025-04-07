@@ -11,9 +11,9 @@ public class Main {
     public static void main(String[] args) throws IOException {
         System.setProperty("HADOOP_HOME", "/dev/null");
 
-        String inputPath = "src/main/resources/veridion_entity_resolution_challenge.snappy.parquet";
-        String uniqueOutputPath = "src/main/resources/outputs/unique.snappy.parquet";
-        String duplicatesOutputPath = "src/main/resources/outputs/duplicates.snappy.parquet";
+        String inputPath = "ParquetSorter/src/main/resources/veridion_entity_resolution_challenge.snappy.parquet";
+        String uniqueOutputPath = "ParquetSorter/src/main/resources/outputs/unique.snappy.parquet";
+        String duplicatesOutputPath = "ParquetSorter/src/main/resources/outputs/duplicates.snappy.parquet";
 
         // Validate input file
         File inputFile = new File(inputPath);
