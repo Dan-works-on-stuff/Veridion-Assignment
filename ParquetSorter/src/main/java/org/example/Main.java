@@ -1,17 +1,26 @@
 package org.example;
 
 import org.apache.avro.generic.GenericRecord;
-import org.example.ParquetProcessor;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Scanner;
 
 public class Main {
     public static void main(String[] args) throws IOException {
         System.setProperty("HADOOP_HOME", "/dev/null");
 
-        String inputPath = "ParquetSorter/src/main/resources/veridion_entity_resolution_challenge.snappy.parquet";
+        // Get input path from command line or prompt
+        String inputPath;
+        if (args.length > 0) {
+            inputPath = args[0];
+        } else {
+            Scanner scanner = new Scanner(System.in);
+            System.out.print("Please enter the input file path: ");
+            inputPath = scanner.nextLine();
+            scanner.close();
+        }
+
         String uniqueOutputPath = "ParquetSorter/src/main/resources/outputs/unique.snappy.parquet";
         String duplicatesOutputPath = "ParquetSorter/src/main/resources/outputs/duplicates.snappy.parquet";
 
