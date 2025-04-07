@@ -120,7 +120,7 @@ public class ParquetProcessor {
         };
     }
 
-    private static String normalizeCompanyName(GenericRecord record) {
+    public static String normalizeCompanyName(GenericRecord record) {
         Object name = record.get("company_name");
         if (name == null) return "";
         return name.toString()
@@ -223,5 +223,79 @@ public class ParquetProcessor {
         return count;
     }
 
+
+    public static class SplitResult {
+        private final List<GenericRecord> uniqueRecords;
+        private final List<GenericRecord> duplicateRecords;
+
+        public SplitResult(List<GenericRecord> uniqueRecords, List<GenericRecord> duplicateRecords) {
+            this.uniqueRecords = uniqueRecords;
+            this.duplicateRecords = duplicateRecords;
+        }
+
+        public List<GenericRecord> getUniqueRecords() {
+            return new ArrayList<>(uniqueRecords);
+        }
+
+        public List<GenericRecord> getDuplicateRecords() {
+            return new ArrayList<>(duplicateRecords);
+        }
+    }
+
+    public static SplitResult splitIntoUniqueAndDuplicates(List<GenericRecord> records) {
+        Map<String, List<GenericRecord>> groups = new HashMap<>();
+
+        // Group records by normalized company name
+        for (GenericRecord record : records) {
+            String normalizedName = normalizeCompanyName(record);
+            groups.computeIfAbsent(normalizedName, k -> new ArrayList<>()).add(record);
+        }
+
+        List<GenericRecord> uniqueList = new ArrayList<>();
+        List<GenericRecord> nonUniqueNamed = new ArrayList<>();
+        List<GenericRecord> unnamedList = new ArrayList<>();
+
+        // Process each group
+        for (Map.Entry<String, List<GenericRecord>> entry : groups.entrySet()) {
+            String normalizedName = entry.getKey();
+            List<GenericRecord> group = entry.getValue();
+
+            if (normalizedName.isEmpty()) {
+                unnamedList.addAll(group);
+                continue;
+            }
+
+            // Find maximum completeness in group
+            int maxCompleteness = group.stream()
+                    .mapToInt(ParquetProcessor::calculateRecordCompleteness)
+                    .max()
+                    .orElse(0);
+
+            // Get first record with max completeness
+            GenericRecord uniqueRecord = group.stream()
+                    .filter(r -> calculateRecordCompleteness(r) == maxCompleteness)
+                    .findFirst()
+                    .orElse(null);
+
+            if (uniqueRecord != null) {
+                uniqueList.add(uniqueRecord);
+                // Add remaining group members to non-unique
+                group.stream()
+                        .filter(r -> r != uniqueRecord)
+                        .forEach(nonUniqueNamed::add);
+            }
+        }
+
+        // Sort sections
+        uniqueList.sort(Comparator.comparing(ParquetProcessor::normalizeCompanyName));
+        nonUniqueNamed.sort(getCompanySortingComparator());
+        unnamedList.sort(completenessDescComparator());
+
+        // Combine duplicates
+        List<GenericRecord> duplicateRecords = new ArrayList<>(nonUniqueNamed);
+        duplicateRecords.addAll(unnamedList);
+
+        return new SplitResult(uniqueList, duplicateRecords);
+    }
 
 }
